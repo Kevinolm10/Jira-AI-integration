@@ -4,7 +4,5 @@ from django.shortcuts import render
 
 def ai_chat(request):
     """Main chat interface view"""
-    return render(request, 'ai_chat/chat.html')
-def ai_chat(request):
     context = {}
-    return render(request, 'chat.html', context)
+    return render(request, 'ai_chat/chat.html', context)
