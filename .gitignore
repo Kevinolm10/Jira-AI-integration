@@ -1,0 +1,51 @@
+# Byte-compiled files
+__pycache__/
+*.py[cod]
+
+# Virtual environment folders
+venv/
+env/
+.venv/
+myenv/
+
+# Django stuff:
+*.sqlite3
+db.sqlite3
+
+# Environment variables
+.env
+*.env
+
+# Python packaging
+*.egg-info/
+dist/
+build/
+
+# IDE/editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs and temporary files
+*.log
+*.pot
+*.pyc
+*.pyo
+*.pyd
+*.cover
+.coverage
+.cache/
+
+# Static files (if collected)
+staticfiles/
+media/
+
+# Coverage reports
+htmlcov/
+.coverage
+
+# Migration files (optional; usually you commit them)
+# migrations/*.py
+# !migrations/__init__.py
+
