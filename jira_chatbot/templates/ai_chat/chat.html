@@ -10,6 +10,7 @@
                 <h3>Jira AI Assistant</h3>
             </div>
             <div class="card-body">
+                <div id="toolbar"></div>
                 <div id="chat-messages" class="mb-3" style="height: 400px; overflow-y: auto; border: 1px solid #dee2e6; padding: 15px; border-radius: 5px;">
                     <!-- Chat messages will appear here -->
                 </div>
@@ -33,7 +34,9 @@
     const chatContainer = document.getElementById('chat-messages');
     const chatForm = document.getElementById('chat-form');
     const userInput = document.getElementById('user-input');
+    const toolBar = document.getElementById('toolbar');
 
+    clearBtn()
     // Handle form submission
     chatForm.addEventListener('submit', async function(e) {
     e.preventDefault(); // Stop default form submission
@@ -107,7 +110,7 @@
     formData.append('user_input', message);
 
     // Make request to Django endpoint
-    const response = await fetch(window.location.pathname, { // Current URL
+    const response = await fetch(window.location.pathname, {
     method: 'POST',
     body: formData,
     headers: {
@@ -121,7 +124,7 @@
 
     // Create bot message container
     const botResponseElement = createBotMessage();
-    botResponseElement.textContent = ''; // Clear "Thinking..." text
+    botResponseElement.textContent = '';
     botResponseElement.parentElement.classList.remove('message-loading');
 
     // Get stream reader
@@ -141,6 +144,18 @@
     // Auto-scroll to bottom
     scrollToBottom();
     }
+    }
+
+    function clearChatWindow() {
+    chatContainer.innerHTML = '';
+    }
+
+    function clearBtn() {
+    const clearButton = document.createElement('button');
+    clearButton.className = 'btn btn-secondary btn-sm mb-2';
+    clearButton.textContent = 'Clear Chat';
+    clearButton.addEventListener('click', clearChatWindow);
+    toolBar.appendChild(clearButton);
     }
 
     // Utility functions
