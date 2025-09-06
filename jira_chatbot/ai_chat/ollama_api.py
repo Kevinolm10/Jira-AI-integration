@@ -2,7 +2,7 @@ import ollama
 
 def generate_response(prompt):
     stream = ollama.chat(
-        model='llama3.2',
+        model='llama3:latest',
         messages = [{'role': 'user', 
                      'content': prompt}],
         stream=True,
