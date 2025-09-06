@@ -8,4 +8,4 @@ def generate_response(prompt):
         stream=True,
     )
     for chunk in stream:
-       yield chunk ['message']['content']
+        yield chunk['message']['content']
