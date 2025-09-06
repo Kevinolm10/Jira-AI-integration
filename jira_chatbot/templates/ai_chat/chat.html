@@ -4,10 +4,36 @@
 
 {% block content %}
 <div class="row">
-    <div class="col-md-8 mx-auto">
+    <!-- Chat History Sidebar -->
+    <div class="col-md-3">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">Chat History</h6>
+                <button class="btn btn-sm btn-primary" id="newChatBtn">
+                    <i class="fas fa-plus"></i> New
+                </button>
+            </div>
+            <div class="card-body p-0">
+                <div id="chatSessions" class="list-group list-group-flush" style="max-height: 500px; overflow-y: auto;">
+                    <!-- Chat sessions will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Chat Area -->
+    <div class="col-md-9">
         <div class="card">
-            <div class="card-header">
-                <h3>Jira AI Assistant</h3>
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0" id="chatTitle">Jira AI Assistant</h5>
+                <div class="d-flex align-items-center gap-2">
+                    <button class="btn btn-sm btn-outline-secondary" id="renameChatBtn" style="display: none;">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" id="deleteChatBtn" style="display: none;">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
             </div>
             <div class="card-body">
                 <div id="toolbar" class="d-flex justify-content-between align-items-center mb-2">
@@ -23,7 +49,7 @@
                 <div id="chat-messages" class="mb-3" style="height: 400px; overflow-y: auto; border: 1px solid #dee2e6; padding: 15px; border-radius: 5px;">
                     <!-- Chat messages will appear here -->
                 </div>
-                
+
                 <form id="chat-form">
                     {% csrf_token %}
                     <div class="input-group">
@@ -35,6 +61,34 @@
         </div>
     </div>
 </div>
+
+<!-- Rename Modal -->
+<div class="modal fade" id="renameModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Rename Chat</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="text" class="form-control" id="newChatTitle" placeholder="Enter new title">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveRenameBtn">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Pass data from Django to JavaScript
+window.chatData = {
+    currentSessionId: '{{ current_session_id }}',
+    chatHistory: {{ chat_history|safe }},
+    userSessions: {{ user_sessions|safe }}
+};
+</script>
 {% endblock %}
 
 {% block extra_js %}
