@@ -116,3 +116,14 @@ STATICFILES_DIRS = [
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Jira/Confluence Configuration
+JIRA_SERVER = os.getenv('JIRA_SERVER')  # e.g., 'https://yourcompany.atlassian.net'
+JIRA_USERNAME = os.getenv('JIRA_USERNAME')  # Your email
+JIRA_API_TOKEN = os.getenv('JIRA_API_TOKEN')  # Generate from Atlassian account
+CONFLUENCE_SERVER = os.getenv('CONFLUENCE_SERVER', JIRA_SERVER)
+CONFLUENCE_USERNAME = os.getenv('CONFLUENCE_USERNAME', JIRA_USERNAME)
+CONFLUENCE_API_TOKEN = os.getenv('CONFLUENCE_API_TOKEN', JIRA_API_TOKEN)
+
+# Ollama Configuration
+OLLAMA_API_URL = os.getenv('OLLAMA_API_URL', 'http://localhost:11434')
