@@ -109,7 +109,7 @@ STATIC_URL = 'static/'
 
 # Additional locations of static files
 STATICFILES_DIRS = [
-    BASE_DIR / 'jira_chatbot' / 'static',
+    BASE_DIR / 'static',
 ]
 
 # Default primary key field type
