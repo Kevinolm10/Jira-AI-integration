@@ -58,7 +58,7 @@ class JiraService:
         except Exception as e:
             logger.error(f"Failed to sync projects: {str(e)}")
     
-    def create_ticket(self, project_key, summary, description, issue_type='Task', priority='Medium'):
+    def create_ticket(self, project_key, summary, description, issue_type='Task', priority='Medium', assignee=None):
         """Create a new Jira ticket"""
         if not self.jira_available:
             raise Exception("JIRA is not available. Cannot create tickets.")
@@ -71,6 +71,18 @@ class JiraService:
                 'issuetype': {'name': issue_type},
                 'priority': {'name': priority}
             }
+
+            # Add assignee if provided
+            if assignee:
+                # Check if assignee looks like an account ID (starts with alphanumeric, ~24 chars)
+                if len(assignee) > 20 and assignee.replace('-', '').replace('_', '').isalnum():
+                    # This looks like an account ID, use it directly
+                    issue_dict['assignee'] = {'accountId': assignee}
+                    logger.info(f"Assigning ticket to user with account ID: {assignee}")
+                else:
+                    # This looks like an email, try email format
+                    issue_dict['assignee'] = {'emailAddress': assignee}
+                    logger.info(f"Assigning ticket using email: {assignee}")
 
             new_issue = self.jira.create_issue(fields=issue_dict)
 
@@ -229,13 +241,29 @@ class JiraService:
             logger.error(f"Failed to update ticket status: {str(e)}")
             raise
 
-    def resolve_ticket(self, ticket_key, resolution_comment=""):
+    def resolve_ticket(self, ticket_key, resolution_comment="", assignee=None):
         """Resolve a ticket"""
         if not self.jira_available:
             raise Exception("JIRA is not available. Cannot resolve tickets.")
 
         try:
             issue = self.jira.issue(ticket_key)
+
+            # Assign ticket if assignee provided
+            if assignee:
+                try:
+                    # Check if assignee looks like an account ID
+                    if len(assignee) > 20 and assignee.replace('-', '').replace('_', '').isalnum():
+                        # This looks like an account ID, use it directly
+                        issue.update(assignee={'accountId': assignee})
+                        logger.info(f"Assigned ticket {ticket_key} to user with account ID: {assignee}")
+                    else:
+                        # This looks like an email, try email format
+                        issue.update(assignee={'emailAddress': assignee})
+                        logger.info(f"Assigned ticket {ticket_key} using email: {assignee}")
+                except Exception as e:
+                    logger.warning(f"Could not assign ticket {ticket_key} to {assignee}: {str(e)}")
+
             transitions = self.jira.transitions(issue)
 
             # Look for resolution transitions (common names)
