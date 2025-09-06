@@ -77,20 +77,33 @@ class JiraAuthenticationBackend(BaseBackend):
     def update_jira_profile(self, user, jira_username):
         """Create or update user's JIRA profile"""
         try:
+            # Get the user's account ID from JIRA using myself() API
+            jira_account_id = None
+            try:
+                # Use the same JIRA connection that was used for authentication
+                jira_user_info = self.jira.myself()
+                jira_account_id = jira_user_info.get('accountId')
+                logger.info(f"Retrieved account ID for {jira_username}: {jira_account_id}")
+            except Exception as e:
+                logger.warning(f"Could not get account ID for {jira_username}: {e}")
+
             profile, created = UserJiraProfile.objects.get_or_create(
                 user=user,
                 defaults={
                     'jira_username': jira_username,
+                    'jira_account_id': jira_account_id,
                     'jira_server': settings.JIRA_URL,
                 }
             )
             if not created:
                 # Update existing profile
                 profile.jira_username = jira_username
+                if jira_account_id:  # Only update if we got a valid account ID
+                    profile.jira_account_id = jira_account_id
                 profile.jira_server = settings.JIRA_URL
                 profile.save()
 
-            logger.info(f"Updated JIRA profile for user: {user.username}")
+            logger.info(f"Updated JIRA profile for user: {user.username} (Account ID: {jira_account_id})")
         except Exception as e:
             logger.warning(f"Failed to update JIRA profile for {user.username}: {e}")
 
