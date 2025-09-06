@@ -14,8 +14,15 @@ class ChatService:
     
     def _get_or_create_session(self):
         session, created = ChatSession.objects.get_or_create(
-            session_id=self.session_id
+            session_id=self.session_id,
+            defaults={'user': self.user}
         )
+
+        # Update user if session exists but user wasn't set
+        if not session.user and self.user:
+            session.user = self.user
+            session.save()
+
         return session
     
     def process_message(self, user_message):
@@ -59,6 +66,10 @@ class ChatService:
             bot_response=response,
             intent_detected=intent
         )
+
+        # Generate title for new sessions
+        if not self.session.title:
+            self.session.generate_title()
 
         return response
 
