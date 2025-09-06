@@ -11,15 +11,19 @@ def ai_chat(request):
     """Main chat interface view"""
     if request.method == "POST":
         user_input = request.POST["user_input"]
-        
+        auto_assign = request.POST.get("auto_assign", "false").lower() == "true"
+
         # Get or create session ID
         session_id = request.session.get('chat_session_id')
         if not session_id:
             session_id = str(uuid.uuid4())
             request.session['chat_session_id'] = session_id
-        
+
+        # Store auto-assign preference in session
+        request.session['auto_assign'] = auto_assign
+
         # Process message through chat service
-        chat_service = ChatService(session_id, user=request.user)
+        chat_service = ChatService(session_id, user=request.user, auto_assign=auto_assign)
         
         def response_generator():
             response = chat_service.process_message(user_input)
