@@ -5,8 +5,9 @@ import json
 import re
 
 class ChatService:
-    def __init__(self, session_id):
+    def __init__(self, session_id, user=None):
         self.session_id = session_id
+        self.user = user
         self.jira_service = JiraService()
         self.session = self._get_or_create_session()
     
@@ -555,7 +556,12 @@ class ChatService:
         jira_status = "✅ Available" if self.jira_service.jira_available else "❌ Unavailable"
         confluence_status = "✅ Available" if self.jira_service.confluence_available else "❌ Unavailable"
 
-        return f"""I'm your JIRA and Confluence assistant! Here's what I can help you with:
+        user_greeting = ""
+        if self.user and self.user.is_authenticated:
+            name = self.user.first_name or self.user.username
+            user_greeting = f"Hello {name}! "
+
+        return f"""{user_greeting}I'm your JIRA and Confluence assistant! Here's what I can help you with:
 
 **🎫 JIRA Ticket Management:**
 - Create new tickets: "Create a ticket for..."
