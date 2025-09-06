@@ -14,7 +14,15 @@
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container">
-            <a class="navbar-brand" href="{% url 'admin:index' %}">Jira AI Chatbot</a>
+            <a class="navbar-brand" href="{% url 'chat' %}">Jira AI Chatbot</a>
+            <div class="navbar-nav ms-auto">
+                {% if user.is_authenticated %}
+                    <span class="navbar-text me-3">Welcome, {{ user.first_name|default:user.username }}!</span>
+                    <a class="btn btn-outline-light btn-sm" href="{% url 'logout' %}">Logout</a>
+                {% else %}
+                    <a class="btn btn-outline-light btn-sm" href="{% url 'login' %}">Login</a>
+                {% endif %}
+            </div>
         </div>
     </nav>
 
