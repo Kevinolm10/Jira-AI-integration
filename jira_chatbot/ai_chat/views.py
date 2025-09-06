@@ -1,9 +1,11 @@
 from django.shortcuts import render
 from django.http import StreamingHttpResponse
 from django.views.decorators.csrf import csrf_exempt
+from django.contrib.auth.decorators import login_required
 from .chat_service import ChatService
 import uuid
 
+@login_required
 @csrf_exempt
 def ai_chat(request):
     """Main chat interface view"""
@@ -17,7 +19,7 @@ def ai_chat(request):
             request.session['chat_session_id'] = session_id
         
         # Process message through chat service
-        chat_service = ChatService(session_id)
+        chat_service = ChatService(session_id, user=request.user)
         
         def response_generator():
             response = chat_service.process_message(user_input)
