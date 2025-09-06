@@ -5,9 +5,10 @@ import json
 import re
 
 class ChatService:
-    def __init__(self, session_id, user=None):
+    def __init__(self, session_id, user=None, auto_assign=False):
         self.session_id = session_id
         self.user = user
+        self.auto_assign = auto_assign
         self.jira_service = JiraService()
         self.session = self._get_or_create_session()
     
@@ -170,15 +171,28 @@ class ChatService:
             ticket_data = json.loads(json_str)
 
             # Create ticket
+            assignee = None
+            if self.auto_assign and self.user and self.user.is_authenticated:
+                # Get user's JIRA info from their profile
+                try:
+                    from jiraAuth.models import UserJiraProfile
+                    profile = UserJiraProfile.objects.get(user=self.user)
+                    # Prefer account ID, fallback to username/email
+                    assignee = profile.jira_account_id or profile.jira_username
+                except:
+                    assignee = self.user.email  # Fallback to email
+
             ticket = self.jira_service.create_ticket(
                 project_key=ticket_data.get('project_key', 'SUP'),
                 summary=ticket_data['summary'],
                 description=ticket_data['description'],
                 issue_type=ticket_data.get('issue_type', 'Task'),
-                priority=ticket_data.get('priority', 'Medium')
+                priority=ticket_data.get('priority', 'Medium'),
+                assignee=assignee
             )
 
-            return f"Created ticket {ticket.ticket_key}: {ticket.summary}"
+            assignment_msg = f" (assigned to {assignee})" if assignee else ""
+            return f"Created ticket {ticket.ticket_key}: {ticket.summary}{assignment_msg}"
 
         except json.JSONDecodeError as e:
             return f"Sorry, I couldn't parse the AI response. AI said: '{ai_response[:200]}...'. Error: {str(e)}"
@@ -206,12 +220,24 @@ class ChatService:
             closed_tickets = []
             failed_tickets = []
 
+            # Get assignee if auto-assign is enabled
+            assignee = None
+            if self.auto_assign and self.user and self.user.is_authenticated:
+                try:
+                    from jiraAuth.models import UserJiraProfile
+                    profile = UserJiraProfile.objects.get(user=self.user)
+                    # Prefer account ID, fallback to username/email
+                    assignee = profile.jira_account_id or profile.jira_username
+                except:
+                    assignee = self.user.email  # Fallback to email
+
             # Close each ticket
             for ticket in tickets:
                 try:
                     result = self.jira_service.resolve_ticket(
                         ticket['key'],
-                        f"Bulk closure: Issue resolved - {search_terms} related matter addressed"
+                        f"Bulk closure: Issue resolved - {search_terms} related matter addressed",
+                        assignee=assignee
                     )
                     closed_tickets.append(ticket['key'])
                 except Exception as e:
@@ -386,12 +412,25 @@ class ChatService:
         resolution_comment = comment_match.group(1) if comment_match else "Resolved via chatbot"
 
         try:
-            result = self.jira_service.resolve_ticket(ticket_key, resolution_comment)
+            # Get assignee if auto-assign is enabled
+            assignee = None
+            if self.auto_assign and self.user and self.user.is_authenticated:
+                try:
+                    from jiraAuth.models import UserJiraProfile
+                    profile = UserJiraProfile.objects.get(user=self.user)
+                    # Prefer account ID, fallback to username/email
+                    assignee = profile.jira_account_id or profile.jira_username
+                except:
+                    assignee = self.user.email  # Fallback to email
+
+            result = self.jira_service.resolve_ticket(ticket_key, resolution_comment, assignee=assignee)
             response = f"✅ **Ticket {ticket_key} has been resolved!**\n\n"
             response += f"**Summary**: {result['summary']}\n"
             response += f"**New Status**: {result['status']}\n"
             if resolution_comment:
                 response += f"**Resolution Comment**: {resolution_comment}\n"
+            if assignee:
+                response += f"**Assigned to**: {assignee}\n"
 
             return response
         except Exception as e:
