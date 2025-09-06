@@ -4,8 +4,36 @@ document.addEventListener('DOMContentLoaded', function () {
     const chatForm = document.getElementById('chat-form');
     const userInput = document.getElementById('user-input');
     const toolBar = document.getElementById('toolbar');
+    const autoAssignToggle = document.getElementById('autoAssignToggle');
 
     clearBtn()
+
+    // Load saved toggle state
+    const savedToggleState = localStorage.getItem('autoAssignToggle');
+    if (savedToggleState !== null) {
+        autoAssignToggle.checked = savedToggleState === 'true';
+    }
+
+    // Save toggle state when changed and update UI
+    autoAssignToggle.addEventListener('change', function() {
+        localStorage.setItem('autoAssignToggle', this.checked);
+        updateToggleStatus();
+    });
+
+    // Update toggle status display
+    function updateToggleStatus() {
+        const statusElement = document.getElementById('toggleStatus');
+        if (autoAssignToggle.checked) {
+            statusElement.textContent = '✅ ON - Tickets will be assigned to you';
+            statusElement.className = 'text-success d-block';
+        } else {
+            statusElement.textContent = '❌ OFF - Tickets will remain unassigned';
+            statusElement.className = 'text-muted d-block';
+        }
+    }
+
+    // Initialize status display
+    updateToggleStatus();
     // Handle form submission
     chatForm.addEventListener('submit', async function (e) {
         e.preventDefault(); // Stop default form submission
@@ -77,6 +105,7 @@ document.addEventListener('DOMContentLoaded', function () {
         // Create FormData (matches Django expectation)
         const formData = new FormData();
         formData.append('user_input', message);
+        formData.append('auto_assign', autoAssignToggle.checked);
 
         // Make request to Django endpoint
         const response = await fetch(window.location.pathname, {
@@ -126,10 +155,11 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function clearBtn() {
         const clearButton = document.createElement('button');
-        clearButton.className = 'btn btn-secondary btn-sm mb-2';
+        clearButton.className = 'btn btn-secondary btn-sm';
         clearButton.textContent = 'Clear Chat';
         clearButton.addEventListener('click', clearChatWindow);
-        toolBar.appendChild(clearButton);
+        // Add to the left side of the toolbar
+        toolBar.firstElementChild.appendChild(clearButton);
     }
 
     // Utility functions
