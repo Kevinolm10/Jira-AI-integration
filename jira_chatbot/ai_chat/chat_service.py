@@ -54,6 +54,8 @@ class ChatService:
             response = self._handle_ticket_search(user_message)
         elif intent == 'search_confluence':
             response = self._handle_confluence_search(user_message)
+        elif intent == 'list_confluence_pages':
+            response = self._handle_list_confluence_pages(user_message)
         elif intent == 'search_knowledge':
             response = self._handle_knowledge_search(user_message)
         else:
@@ -109,6 +111,9 @@ class ChatService:
         # Check for create confluence page intent
         elif any(word in message_lower for word in ['create', 'new', 'make']) and any(word in message_lower for word in ['confluence', 'page', 'documentation', 'guide', 'troubleshoot']):
             return 'create_confluence_page'
+        # Check for listing confluence pages
+        elif any(phrase in message_lower for phrase in ['what confluence pages', 'list confluence', 'show confluence', 'available confluence', 'confluence pages available']):
+            return 'list_confluence_pages'
         # Check for confluence search specifically
         elif any(word in message_lower for word in ['find', 'search']) and any(word in message_lower for word in ['confluence', 'page', 'documentation']):
             return 'search_confluence'
@@ -118,9 +123,9 @@ class ChatService:
         # Check for search ticket intent
         elif any(word in message_lower for word in ['search', 'find']) and any(word in message_lower for word in ['ticket', 'issue']):
             return 'search_tickets'
-        # Check for general search/help
+        # Check for general search/help (should search both tickets and confluence)
         elif any(word in message_lower for word in ['search', 'find']):
-            return 'search_tickets'
+            return 'search_knowledge'
         elif any(word in message_lower for word in ['help', 'how', 'solution', 'problem']):
             return 'search_knowledge'
         else:
@@ -202,8 +207,8 @@ class ChatService:
                 assignee=assignee
             )
 
-            assignment_msg = f" (assigned to {assignee})" if assignee else ""
-            return f"Created ticket {ticket.ticket_key}: {ticket.summary}{assignment_msg}"
+            assignment_msg = f"\nAssigned to: {assignee}" if assignee else "\nAssigned to: Unassigned"
+            return f"**✅ Ticket Created Successfully**\n\n**{ticket.ticket_key}**: {ticket.summary}\n\nStatus: To Do | Priority: {ticket_data.get('priority', 'Medium')}{assignment_msg}\n\nYour ticket has been created and is ready for processing."
 
         except json.JSONDecodeError as e:
             return f"Sorry, I couldn't parse the AI response. AI said: '{ai_response[:200]}...'. Error: {str(e)}"
@@ -346,13 +351,16 @@ class ChatService:
 
         try:
             issue = self.jira_service.jira.issue(ticket_key)
-            response = f"**Ticket {ticket_key}**\n\n"
-            response += f"**Summary**: {issue.fields.summary}\n"
-            response += f"**Status**: {issue.fields.status.name}\n"
-            response += f"**Priority**: {issue.fields.priority.name if issue.fields.priority else 'Not set'}\n"
-            response += f"**Description**: {issue.fields.description or 'No description provided'}\n"
-            response += f"**Assignee**: {issue.fields.assignee.displayName if issue.fields.assignee else 'Unassigned'}\n"
-            response += f"**Created**: {issue.fields.created[:10]}\n"
+            response = f"**🎫 Ticket Details: {ticket_key}**\n\n"
+            response += f"**{issue.fields.summary}**\n\n"
+            response += f"Status: {issue.fields.status.name} | Priority: {issue.fields.priority.name if issue.fields.priority else 'Not set'}\n"
+            response += f"Assignee: {issue.fields.assignee.displayName if issue.fields.assignee else 'Unassigned'}\n"
+            response += f"Created: {issue.fields.created[:10]}\n\n"
+
+            if issue.fields.description:
+                response += f"**Description:**\n{issue.fields.description}\n\n"
+            else:
+                response += "**Description:** No description provided\n\n"
 
             return response
         except Exception as e:
@@ -612,67 +620,134 @@ class ChatService:
         tickets = self.jira_service.search_tickets(search_terms)
 
         if tickets:
-            response = "Found tickets:\n\n"
-            for ticket in tickets[:5]:  # Limit to 5 results
-                response += f"**{ticket['key']}**: {ticket['summary']}\n"
-                response += f"Status: {ticket['status']} | Priority: {ticket['priority']}\n"
+            response = f"**🎫 Ticket Search Results ({len(tickets)} found)**\n\n"
+            for i, ticket in enumerate(tickets[:5], 1):  # Limit to 5 results
+                response += f"{i}. **{ticket['key']}**: {ticket['summary']}\n"
+                response += f"   Status: {ticket['status']} | Priority: {ticket['priority']}\n"
                 if ticket['description']:
-                    response += f"Description: {ticket['description'][:100]}...\n"
+                    response += f"   {ticket['description'][:100]}...\n"
                 response += "\n"
         else:
-            response = "No tickets found matching your search."
+            response = "**🎫 No tickets found**\n\nNo tickets found matching your search criteria."
 
         return response
     
     def _handle_knowledge_search(self, message):
         """Search for solutions in tickets and Confluence"""
-        search_terms = message
+        # Extract meaningful search terms
+        search_terms = re.sub(r'(help|how|solution|problem|find|search)', '', message, flags=re.IGNORECASE).strip()
+
+        # If no meaningful terms, use the full message
+        if not search_terms or len(search_terms) < 3:
+            search_terms = message
 
         # Search both tickets and Confluence
         tickets = self.jira_service.search_tickets(search_terms)
         confluence_pages = self.jira_service.search_confluence(search_terms)
 
-        context = "Found information:\n\n"
-        has_context = False
-
-        if tickets:
-            context += "From Jira tickets:\n"
-            for ticket in tickets[:3]:
-                context += f"- {ticket['key']}: {ticket['summary']}\n"
-            has_context = True
-
-        if confluence_pages:
-            context += "\nFrom Confluence:\n"
-            for page in confluence_pages[:3]:
-                context += f"- {page['title']}\n"
-            has_context = True
-
-        if not has_context:
-            if not self.jira_service.jira_available and not self.jira_service.confluence_available:
-                context = "JIRA and Confluence are currently not available, so I cannot search for specific information."
-            elif not self.jira_service.jira_available:
-                context = "JIRA is currently not available, so I cannot search tickets."
-            elif not self.jira_service.confluence_available:
-                context = "Confluence is currently not available, so I cannot search documentation."
-            else:
-                context = "No specific information found in JIRA or Confluence."
-
-        # Generate AI response with context
-        prompt = f"""
-        User question: {message}
-
-        Available context:
-        {context}
-
-        Provide a helpful answer based on the context above. If no specific context is available, provide general helpful advice.
-        """
-
         response = ""
-        for chunk in generate_response(prompt):
-            response += chunk
+
+        # Build comprehensive response
+        if tickets or confluence_pages:
+            response += f"**Search Results for '{search_terms}'**\n\n"
+
+            if confluence_pages:
+                response += "**📚 From Confluence Documentation:**\n\n"
+                for i, page in enumerate(confluence_pages[:3], 1):
+                    response += f"{i}. **{page['title']}**\n"
+                    response += f"   {page['content'][:150]}...\n"
+                    response += f"   [View full page]({page['url']})\n\n"
+
+            if tickets:
+                response += "**🎫 From Related Tickets:**\n\n"
+                for i, ticket in enumerate(tickets[:3], 1):
+                    response += f"{i}. **{ticket['key']}**: {ticket['summary']}\n"
+                    response += f"   Status: {ticket['status']} | Priority: {ticket['priority']}\n"
+                    if ticket['description']:
+                        response += f"   {ticket['description'][:100]}...\n"
+                    response += "\n"
+
+            # Add AI-generated advice based on found content
+            context_info = ""
+            if confluence_pages:
+                context_info += "Documentation available: " + ", ".join([p['title'] for p in confluence_pages[:3]])
+            if tickets:
+                context_info += " Related tickets: " + ", ".join([t['key'] for t in tickets[:3]])
+
+            prompt = f"""
+            User is asking: {message}
+
+            Available resources: {context_info}
+
+            Based on the documentation and tickets found, provide 2-3 practical next steps or recommendations.
+            Keep it concise and actionable.
+            """
+
+            ai_advice = ""
+            for chunk in generate_response(prompt):
+                ai_advice += chunk
+
+            response += f"**💡 Recommended Next Steps:**\n{ai_advice}"
+
+        else:
+            # Check service availability
+            if not self.jira_service.jira_available and not self.jira_service.confluence_available:
+                response = "JIRA and Confluence are currently not available, so I cannot search for specific information. "
+            elif not self.jira_service.jira_available:
+                response = "JIRA is currently not available, so I cannot search tickets. "
+            elif not self.jira_service.confluence_available:
+                response = "Confluence is currently not available, so I cannot search documentation. "
+            else:
+                response = f"No specific information found for '{search_terms}' in JIRA or Confluence. "
+
+            # Provide general AI assistance
+            prompt = f"""
+            User is asking for help with: {message}
+
+            No specific documentation or tickets were found for this topic.
+            Provide helpful general advice and suggest they might want to:
+            1. Try different search terms
+            2. Create a ticket if this is a new issue
+            3. Contact support if needed
+
+            Keep the response helpful and professional.
+            """
+
+            ai_advice = ""
+            for chunk in generate_response(prompt):
+                ai_advice += chunk
+
+            response += ai_advice
 
         return response
     
+    def _handle_list_confluence_pages(self, message):
+        """Handle requests to list available Confluence pages"""
+        if not self.jira_service.confluence_available:
+            return "Sorry, Confluence is currently not available. I cannot access documentation at the moment."
+
+        try:
+            # Get all available pages by searching with a broad query
+            all_pages = self.jira_service.search_confluence("*")
+
+            if all_pages:
+                response = f"**📚 Available Confluence Pages ({len(all_pages)} total)**\n\n"
+                for i, page in enumerate(all_pages[:10], 1):  # Limit to 10 results
+                    response += f"{i}. **{page['title']}**\n"
+                    if page['content']:
+                        response += f"   Preview: {page['content'][:100]}...\n"
+                    response += f"   [View page]({page['url']})\n\n"
+
+                if len(all_pages) > 10:
+                    response += f"... and {len(all_pages) - 10} more pages. Use search to find specific topics.\n"
+            else:
+                response = "No Confluence pages found. You may need to create some documentation first."
+
+        except Exception as e:
+            response = f"Error accessing Confluence pages: {str(e)}"
+
+        return response
+
     def _handle_confluence_search(self, message):
         """Handle Confluence-specific search requests"""
         if not self.jira_service.confluence_available:
@@ -681,16 +756,22 @@ class ChatService:
         # Extract search terms
         search_terms = re.sub(r'(find|search|confluence|page|documentation)', '', message, flags=re.IGNORECASE).strip()
 
+        # If no specific terms, show available pages
+        if not search_terms or len(search_terms) < 2:
+            return self._handle_list_confluence_pages(message)
+
         confluence_pages = self.jira_service.search_confluence(search_terms)
 
         if confluence_pages:
-            response = "Found Confluence pages:\n\n"
-            for page in confluence_pages[:5]:  # Limit to 5 results
-                response += f"**{page['title']}**\n"
-                response += f"Content: {page['content'][:200]}...\n"
-                response += f"URL: {page['url']}\n\n"
+            response = f"**📚 Confluence Search Results ({len(confluence_pages)} found)**\n\n"
+            response += f"Search term: `{search_terms}`\n\n"
+            for i, page in enumerate(confluence_pages[:5], 1):  # Limit to 5 results
+                response += f"{i}. **{page['title']}**\n"
+                response += f"   {page['content'][:200]}...\n"
+                response += f"   [View page]({page['url']})\n\n"
         else:
-            response = "No Confluence pages found matching your search."
+            response = f"**📚 No Confluence pages found**\n\n"
+            response += f"No pages found matching `{search_terms}`. Try different keywords or check available pages."
 
         return response
 
