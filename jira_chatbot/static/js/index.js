@@ -3,10 +3,17 @@ document.addEventListener('DOMContentLoaded', function () {
     const chatContainer = document.getElementById('chat-messages');
     const chatForm = document.getElementById('chat-form');
     const userInput = document.getElementById('user-input');
-    const toolBar = document.getElementById('toolbar');
-    const autoAssignToggle = document.getElementById('autoAssignToggle');
 
-    clearBtn()
+    const autoAssignToggle = document.getElementById('autoAssignToggle');
+    const chatSessions = document.getElementById('chatSessions');
+    const newChatBtn = document.getElementById('newChatBtn');
+    const renameChatBtn = document.getElementById('renameChatBtn');
+    const deleteChatBtn = document.getElementById('deleteChatBtn');
+    const chatTitle = document.getElementById('chatTitle');
+
+    // Initialize chat history and sessions
+    initializeChatHistory();
+    loadChatSessions();
 
     // Load saved toggle state
     const savedToggleState = localStorage.getItem('autoAssignToggle');
@@ -34,6 +41,84 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Initialize status display
     updateToggleStatus();
+
+    // Chat history functions
+    function initializeChatHistory() {
+        if (window.chatData && window.chatData.chatHistory) {
+            const history = window.chatData.chatHistory;
+            chatContainer.innerHTML = '';
+
+            history.forEach(msg => {
+                addUserMessage(msg.user_message, false);
+                addBotMessage(msg.bot_response, false);
+            });
+
+            scrollToBottom();
+        }
+    }
+
+    function loadChatSessions() {
+        fetch('/api/chat-sessions/')
+            .then(response => response.json())
+            .then(data => {
+                renderChatSessions(data.sessions);
+            })
+            .catch(error => console.error('Error loading chat sessions:', error));
+    }
+
+    function renderChatSessions(sessions) {
+        chatSessions.innerHTML = '';
+
+        sessions.forEach(session => {
+            const sessionElement = document.createElement('div');
+            sessionElement.className = `list-group-item list-group-item-action ${session.session_id === window.chatData.currentSessionId ? 'active' : ''}`;
+            sessionElement.style.cursor = 'pointer';
+
+            const title = session.title || 'New Chat';
+            const messageCount = session.message_count || 0;
+            const lastActivity = new Date(session.last_activity).toLocaleDateString();
+
+            sessionElement.innerHTML = `
+                <div class="d-flex w-100 justify-content-between">
+                    <h6 class="mb-1">${title}</h6>
+                    <small>${lastActivity}</small>
+                </div>
+                <p class="mb-1">${messageCount} messages</p>
+            `;
+
+            sessionElement.addEventListener('click', () => {
+                if (session.session_id !== window.chatData.currentSessionId) {
+                    window.location.href = `/chat/${session.session_id}/`;
+                }
+            });
+
+            chatSessions.appendChild(sessionElement);
+        });
+    }
+
+    // New chat button
+    newChatBtn.addEventListener('click', function() {
+        fetch('/api/new-chat/', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.session_id) {
+                window.location.href = `/chat/${data.session_id}/`;
+            }
+        })
+        .catch(error => console.error('Error creating new chat:', error));
+    });
+
+    // Show rename/delete buttons if we have a current session
+    if (window.chatData.currentSessionId) {
+        renameChatBtn.style.display = 'inline-block';
+        deleteChatBtn.style.display = 'inline-block';
+    }
+
     // Handle form submission
     chatForm.addEventListener('submit', async function (e) {
         e.preventDefault(); // Stop default form submission
@@ -71,12 +156,21 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     // Add user message to chat
-    function addUserMessage(message) {
+    function addUserMessage(message, scroll = true) {
         const messageDiv = document.createElement('div');
         messageDiv.className = 'user-message';
         messageDiv.innerHTML = `<strong>You:</strong> ${escapeHtml(message)}`;
         chatContainer.appendChild(messageDiv);
-        scrollToBottom();
+        if (scroll) scrollToBottom();
+    }
+
+    // Add bot message to chat (for loading history)
+    function addBotMessage(message, scroll = true) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'bot-message';
+        messageDiv.innerHTML = `<strong>AI:</strong> ${escapeHtml(message)}`;
+        chatContainer.appendChild(messageDiv);
+        if (scroll) scrollToBottom();
     }
 
     // Create empty bot message container
@@ -149,18 +243,55 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    function clearChatWindow() {
-        chatContainer.innerHTML = '';
-    }
+    // Rename and delete functionality
+    renameChatBtn.addEventListener('click', function() {
+        const modal = new bootstrap.Modal(document.getElementById('renameModal'));
+        document.getElementById('newChatTitle').value = chatTitle.textContent;
+        modal.show();
+    });
 
-    function clearBtn() {
-        const clearButton = document.createElement('button');
-        clearButton.className = 'btn btn-secondary btn-sm';
-        clearButton.textContent = 'Clear Chat';
-        clearButton.addEventListener('click', clearChatWindow);
-        // Add to the left side of the toolbar
-        toolBar.firstElementChild.appendChild(clearButton);
-    }
+    document.getElementById('saveRenameBtn').addEventListener('click', function() {
+        const newTitle = document.getElementById('newChatTitle').value.trim();
+        if (newTitle && window.chatData.currentSessionId) {
+            const formData = new FormData();
+            formData.append('title', newTitle);
+
+            fetch(`/api/rename-chat/${window.chatData.currentSessionId}/`, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-CSRFToken': getCsrfToken()
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    chatTitle.textContent = data.title;
+                    loadChatSessions(); // Refresh sidebar
+                    bootstrap.Modal.getInstance(document.getElementById('renameModal')).hide();
+                }
+            })
+            .catch(error => console.error('Error renaming chat:', error));
+        }
+    });
+
+    deleteChatBtn.addEventListener('click', function() {
+        if (confirm('Are you sure you want to delete this chat? This action cannot be undone.')) {
+            fetch(`/api/delete-chat/${window.chatData.currentSessionId}/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCsrfToken()
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    window.location.href = '/'; // Redirect to new chat
+                }
+            })
+            .catch(error => console.error('Error deleting chat:', error));
+        }
+    });
 
     // Utility functions
     function scrollToBottom() {
