@@ -146,7 +146,13 @@ class JiraService:
             return []
 
         try:
-            results = self.confluence.cql(f'text ~ "{query}"')
+            # Handle different query types
+            if query == "*" or not query.strip():
+                # Get all pages using a broad search
+                results = self.confluence.cql('type=page')
+            else:
+                # Search for specific content
+                results = self.confluence.cql(f'text ~ "{query}"')
 
             pages = []
             for result in results.get('results', []):
