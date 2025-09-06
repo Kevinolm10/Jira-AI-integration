@@ -137,18 +137,47 @@ class ChatService:
         if not self.jira_service.jira_available:
             return "Sorry, JIRA is currently not available. I cannot create tickets at the moment, but I can still help you with other questions!"
 
-        # Extract ticket details using AI
+        # Get conversation context for better ticket creation
+        conversation_context = self._get_conversation_context()
+
+        # Extract ticket details using AI with conversation context
         prompt = f"""
-        Extract ticket information from this message: "{message}"
+        Based on this conversation and the user's request to create a ticket, extract relevant ticket information.
+
+        Conversation context:
+        {conversation_context}
+
+        Current user message: "{message}"
+
+        Analyze the conversation to understand the specific technical issue or problem the user is experiencing. Create a meaningful support ticket with:
+
+        1. A specific, descriptive title that clearly identifies the problem
+        2. A detailed description that includes:
+           - The specific issue or error
+           - Any relevant technical details mentioned (model numbers, error messages, etc.)
+           - Context from the conversation
+           - Any troubleshooting steps already discussed
 
         Return ONLY valid JSON without any extra text, comments, or markdown formatting:
         {{
-            "summary": "brief title",
-            "description": "detailed description",
+            "summary": "Write a specific title here based on the actual technical issue discussed",
+            "description": "Write a comprehensive description here including all relevant details from the conversation",
             "project_key": "SUP",
-            "priority": "Medium",
+            "priority": "Choose High/Medium/Low based on urgency and impact of the issue",
             "issue_type": "Task"
         }}
+
+        Examples of good ticket summaries:
+        - "ZD421 Zebra printer producing blurry print output"
+        - "External monitor not displaying via HDMI connection"
+        - "Network shared drive access denied error"
+        - "Software installation fails with error code 1603"
+
+        IMPORTANT:
+        - Do NOT use placeholder text like "brief title" or "detailed description"
+        - Do NOT use generic titles like "user issue" or "technical problem"
+        - DO create specific titles based on the actual problem discussed
+        - DO include specific technical details mentioned in the conversation
 
         Do not include any text before or after the JSON. Do not use comments in the JSON.
         """
@@ -184,7 +213,13 @@ class ChatService:
                 clean_lines.append(line)
 
             json_str = '\n'.join(clean_lines)
+
+            # Debug logging
+            print(f"DEBUG: AI Response: {ai_response[:500]}")
+            print(f"DEBUG: Parsed JSON: {json_str}")
+
             ticket_data = json.loads(json_str)
+            print(f"DEBUG: Ticket data: {ticket_data}")
 
             # Create ticket
             assignee = None
@@ -198,6 +233,9 @@ class ChatService:
                 except:
                     assignee = self.user.email  # Fallback to email
 
+            print(f"DEBUG: Creating ticket with data: {ticket_data}")
+            print(f"DEBUG: Assignee: {assignee}")
+
             ticket = self.jira_service.create_ticket(
                 project_key=ticket_data.get('project_key', 'SUP'),
                 summary=ticket_data['summary'],
@@ -206,6 +244,8 @@ class ChatService:
                 priority=ticket_data.get('priority', 'Medium'),
                 assignee=assignee
             )
+
+            print(f"DEBUG: Ticket created successfully: {ticket.ticket_key}")
 
             assignment_msg = f"\nAssigned to: {assignee}" if assignee else "\nAssigned to: Unassigned"
             return f"**✅ Ticket Created Successfully**\n\n**{ticket.ticket_key}**: {ticket.summary}\n\nStatus: To Do | Priority: {ticket_data.get('priority', 'Medium')}{assignment_msg}\n\nYour ticket has been created and is ready for processing."
