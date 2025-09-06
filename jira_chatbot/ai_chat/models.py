@@ -28,9 +28,12 @@ class JiraUser(models.Model):
 class ChatSession(models.Model):
     """Enhanced chat session with user context"""
     session_id = models.CharField(max_length=100, unique=True)
-    user_email = models.EmailField(blank=True, null=True)  # Who's chatting
+    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)  # Link to authenticated user
+    title = models.CharField(max_length=200, blank=True)  # Auto-generated or user-set title
+    user_email = models.EmailField(blank=True, null=True)  # Who's chatting (legacy)
     current_project = models.ForeignKey(JiraProject, on_delete=models.SET_NULL, null=True, blank=True)
     conversation_context = models.JSONField(default=dict)  # Store conversation state
+    is_active = models.BooleanField(default=True)  # Whether this session is currently active
     created_at = models.DateTimeField(auto_now_add=True)
     last_activity = models.DateTimeField(auto_now=True)
     
@@ -38,10 +41,29 @@ class ChatSession(models.Model):
         """Helper method to set context data"""
         self.conversation_context[key] = value
         self.save()
-    
+
     def get_context(self, key, default=None):
         """Helper method to get context data"""
         return self.conversation_context.get(key, default)
+
+    def generate_title(self):
+        """Auto-generate a title based on the first message"""
+        if not self.title:
+            first_message = self.chatmessage_set.first()
+            if first_message:
+                # Use first 50 characters of the first user message
+                self.title = first_message.user_message[:50]
+                if len(first_message.user_message) > 50:
+                    self.title += "..."
+                self.save()
+        return self.title
+
+    def get_message_count(self):
+        """Get the number of messages in this session"""
+        return self.chatmessage_set.count()
+
+    def __str__(self):
+        return f"Chat {self.session_id[:8]} - {self.title or 'Untitled'}"
 
 class ChatMessage(models.Model):
     session = models.ForeignKey(ChatSession, on_delete=models.CASCADE)
