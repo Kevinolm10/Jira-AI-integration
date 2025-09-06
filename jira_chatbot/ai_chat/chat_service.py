@@ -26,7 +26,9 @@ class ChatService:
         intent = self._detect_intent(user_message)
 
         # Handle different intents
-        if intent == 'resolve_ticket':
+        if intent == 'bulk_close_tickets':
+            response = self._handle_bulk_close_tickets(user_message)
+        elif intent == 'resolve_ticket':
             response = self._handle_resolve_ticket(user_message)
         elif intent == 'update_ticket_status':
             response = self._handle_update_ticket_status(user_message)
@@ -76,8 +78,11 @@ class ChatService:
         """Enhanced intent detection"""
         message_lower = message.lower()
 
-        # Check for ticket management requests first (most specific)
-        if any(word in message_lower for word in ['resolve', 'close', 'complete', 'finish']) and re.search(r'\b(sup|kan)-\d+\b', message_lower):
+        # Check for bulk operations first (most specific)
+        if any(word in message_lower for word in ['close all', 'resolve all', 'close them', 'resolve them']) or (any(word in message_lower for word in ['close', 'resolve']) and any(word in message_lower for word in ['all', 'related', 'issues', 'tickets'])):
+            return 'bulk_close_tickets'
+        # Check for ticket management requests (specific tickets)
+        elif any(word in message_lower for word in ['resolve', 'close', 'complete', 'finish']) and re.search(r'\b(sup|kan)-\d+\b', message_lower):
             return 'resolve_ticket'
         elif any(word in message_lower for word in ['update', 'change', 'set']) and any(word in message_lower for word in ['status', 'state']) and re.search(r'\b(sup|kan)-\d+\b', message_lower):
             return 'update_ticket_status'
@@ -179,6 +184,116 @@ class ChatService:
             return f"Sorry, I couldn't parse the AI response. AI said: '{ai_response[:200]}...'. Error: {str(e)}"
         except Exception as e:
             return f"Sorry, I couldn't create the ticket. JIRA might be unavailable or there was an error: {str(e)}"
+
+    def _handle_bulk_close_tickets(self, message):
+        """Handle bulk closing of tickets based on search criteria"""
+        if not self.jira_service.jira_available:
+            return "Sorry, JIRA is currently not available. I cannot close tickets at the moment."
+
+        # Extract search terms from the message more intelligently
+        search_terms = self._extract_search_terms_from_bulk_message(message)
+
+        if not search_terms:
+            return "I couldn't determine what type of tickets to close. Please specify what tickets you want to close (e.g., 'close all Windows login tickets' or 'close all iOS WiFi issues')."
+
+        try:
+            # Search for tickets matching the criteria
+            tickets = self.jira_service.search_tickets(search_terms)
+
+            if not tickets:
+                return f"No tickets found matching '{search_terms}' to close."
+
+            closed_tickets = []
+            failed_tickets = []
+
+            # Close each ticket
+            for ticket in tickets:
+                try:
+                    result = self.jira_service.resolve_ticket(
+                        ticket['key'],
+                        f"Bulk closure: Issue resolved - {search_terms} related matter addressed"
+                    )
+                    closed_tickets.append(ticket['key'])
+                except Exception as e:
+                    failed_tickets.append(f"{ticket['key']} (Error: {str(e)})")
+
+            # Build response
+            response = f"✅ **Bulk ticket closure completed!**\n\n"
+
+            if closed_tickets:
+                response += f"**Successfully closed {len(closed_tickets)} tickets:**\n"
+                for ticket_key in closed_tickets:
+                    response += f"- {ticket_key}\n"
+                response += f"\n**Resolution comment**: Bulk closure: Issue resolved - {search_terms} related matter addressed\n"
+
+            if failed_tickets:
+                response += f"\n**Failed to close {len(failed_tickets)} tickets:**\n"
+                for failure in failed_tickets:
+                    response += f"- {failure}\n"
+
+            return response
+
+        except Exception as e:
+            return f"Sorry, I couldn't perform the bulk closure. Error: {str(e)}"
+
+    def _extract_search_terms_from_bulk_message(self, message):
+        """Extract search terms from bulk operation messages"""
+        import re
+
+        message_lower = message.lower()
+
+        # Remove common bulk operation words
+        noise_words = [
+            'close', 'resolve', 'all', 'tickets', 'issues', 'them', 'please', 'now',
+            'stop', 'ask', 'confirm', 'regarding', 'related', 'about', 'with', 'for',
+            'can', 'you', 'the', 'and', 'or', 'to', 'from', 'in', 'on', 'at', 'by'
+        ]
+
+        # Split message into words
+        words = re.findall(r'\b\w+\b', message_lower)
+
+        # Remove noise words
+        meaningful_words = [word for word in words if word not in noise_words and len(word) > 2]
+
+        # Look for common patterns
+        search_terms = []
+
+        # Pattern 1: "close all [topic] tickets/issues"
+        patterns = [
+            r'(?:close|resolve)\s+all\s+([^t]+?)(?:\s+(?:tickets|issues))',
+            r'(?:tickets|issues)\s+(?:regarding|about|related\s+to)\s+(.+?)(?:\s|$)',
+            r'all\s+([^t]+?)(?:\s+(?:tickets|issues|related))',
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, message_lower)
+            if match:
+                terms = match.group(1).strip()
+                if terms:
+                    search_terms.extend(terms.split())
+
+        # If no patterns matched, use meaningful words
+        if not search_terms:
+            search_terms = meaningful_words[:3]  # Take first 3 meaningful words
+
+        # Clean and join search terms
+        final_terms = ' '.join(search_terms).strip()
+
+        # Handle specific common cases
+        if any(word in message_lower for word in ['windows', 'login', 'sign']):
+            if 'windows' in message_lower and any(word in message_lower for word in ['login', 'sign']):
+                final_terms = 'windows login'
+        elif any(word in message_lower for word in ['ios', 'wifi', 'wireless']):
+            if 'ios' in message_lower and any(word in message_lower for word in ['wifi', 'wireless']):
+                final_terms = 'ios wifi'
+        elif any(word in message_lower for word in ['microsoft', 'office', '365']):
+            final_terms = 'microsoft'
+        elif any(word in message_lower for word in ['printer', 'printing']):
+            final_terms = 'printer'
+        elif any(word in message_lower for word in ['network', 'connectivity']):
+            final_terms = 'network'
+
+        return final_terms
 
     def _handle_get_ticket_details(self, message):
         """Handle requests for specific ticket details"""
