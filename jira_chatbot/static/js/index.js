@@ -10,10 +10,18 @@ document.addEventListener('DOMContentLoaded', function () {
     const renameChatBtn = document.getElementById('renameChatBtn');
     const deleteChatBtn = document.getElementById('deleteChatBtn');
     const chatTitle = document.getElementById('chatTitle');
+    const mobileChatTitle = document.getElementById('mobileChatTitle');
+    const toggleSidebarBtn = document.getElementById('toggleSidebarBtn');
+    const closeSidebarBtn = document.getElementById('closeSidebarBtn');
+    const mobileNewChatBtn = document.getElementById('mobileNewChatBtn');
+    const chatSidebar = document.getElementById('chatSidebar');
 
     // Initialize chat history and sessions
     initializeChatHistory();
     loadChatSessions();
+
+    // Initialize mobile functionality
+    initializeMobileFeatures();
 
     // Load saved toggle state
     const savedToggleState = localStorage.getItem('autoAssignToggle');
@@ -41,6 +49,64 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Initialize status display
     updateToggleStatus();
+
+    // Mobile functionality
+    function initializeMobileFeatures() {
+        // Create backdrop for mobile sidebar
+        const backdrop = document.createElement('div');
+        backdrop.className = 'sidebar-backdrop';
+        backdrop.id = 'sidebarBackdrop';
+        document.body.appendChild(backdrop);
+
+        // Toggle sidebar on mobile
+        if (toggleSidebarBtn) {
+            toggleSidebarBtn.addEventListener('click', function() {
+                chatSidebar.classList.add('show');
+                backdrop.classList.add('show');
+                document.body.style.overflow = 'hidden';
+            });
+        }
+
+        // Close sidebar
+        if (closeSidebarBtn) {
+            closeSidebarBtn.addEventListener('click', closeMobileSidebar);
+        }
+
+        // Close sidebar when clicking backdrop
+        backdrop.addEventListener('click', closeMobileSidebar);
+
+        // Mobile new chat button
+        if (mobileNewChatBtn) {
+            mobileNewChatBtn.addEventListener('click', function() {
+                newChatBtn.click(); // Trigger the main new chat functionality
+            });
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', function() {
+            if (window.innerWidth >= 992) {
+                // Desktop view - ensure sidebar is visible and backdrop is hidden
+                chatSidebar.classList.remove('show');
+                backdrop.classList.remove('show');
+                document.body.style.overflow = '';
+            }
+        });
+
+        // Update titles when switching sessions
+        function updateTitles(title) {
+            if (chatTitle) chatTitle.textContent = title;
+            if (mobileChatTitle) mobileChatTitle.textContent = title;
+        }
+
+        // Make updateTitles available globally
+        window.updateChatTitles = updateTitles;
+    }
+
+    function closeMobileSidebar() {
+        chatSidebar.classList.remove('show');
+        document.getElementById('sidebarBackdrop').classList.remove('show');
+        document.body.style.overflow = '';
+    }
 
     // Chat history functions
     function initializeChatHistory() {
@@ -88,7 +154,16 @@ document.addEventListener('DOMContentLoaded', function () {
 
             sessionElement.addEventListener('click', () => {
                 if (session.session_id !== window.chatData.currentSessionId) {
-                    window.location.href = `/chat/${session.session_id}/`;
+                    // Close mobile sidebar before navigation
+                    if (window.innerWidth < 992) {
+                        closeMobileSidebar();
+                        // Small delay to allow animation
+                        setTimeout(() => {
+                            window.location.href = `/chat/${session.session_id}/`;
+                        }, 150);
+                    } else {
+                        window.location.href = `/chat/${session.session_id}/`;
+                    }
                 }
             });
 
@@ -164,11 +239,63 @@ document.addEventListener('DOMContentLoaded', function () {
         if (scroll) scrollToBottom();
     }
 
+    // Format bot message content
+    function formatBotMessage(message) {
+        // Convert markdown-like formatting to HTML
+        let formatted = message
+            // Headers
+            .replace(/^\*\*([^*]+)\*\*$/gm, '<div class="response-section-title">$1</div>')
+            .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+
+            // Lists
+            .replace(/^\d+\.\s+(.+)$/gm, '<div class="response-item"><div class="response-item-title">$1</div></div>')
+            .replace(/^-\s+(.+)$/gm, '<div class="response-item">• $1</div>')
+
+            // Links
+            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+
+            // Code blocks
+            .replace(/```([^`]+)```/g, '<pre><code>$1</code></pre>')
+            .replace(/`([^`]+)`/g, '<code>$1</code>')
+
+            // Line breaks
+            .replace(/\n\n/g, '</p><p>')
+            .replace(/\n/g, '<br>');
+
+        // Wrap in paragraph if not already structured
+        if (!formatted.includes('<div') && !formatted.includes('<p>')) {
+            formatted = `<p>${formatted}</p>`;
+        }
+
+        // Add special formatting for common patterns
+        formatted = formatted
+            // Status indicators
+            .replace(/Status:\s*(Open|In Progress|Done|Closed)/gi, (_, status) => {
+                const statusClass = status.toLowerCase().replace(/\s+/g, '-');
+                return `Status: <span class="status-badge status-${statusClass}">${status}</span>`;
+            })
+
+            // Priority indicators
+            .replace(/Priority:\s*(High|Medium|Low)/gi, (_, priority) => {
+                const priorityClass = priority.toLowerCase();
+                return `Priority: <span class="priority-${priorityClass}">${priority}</span>`;
+            })
+
+            // Ticket references
+            .replace(/\b(SUP|KAN)-(\d+)\b/g, '<strong>$1-$2</strong>')
+
+            // URLs that aren't already links
+            .replace(/(?<!href="|">)(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank">$1</a>');
+
+        return formatted;
+    }
+
     // Add bot message to chat (for loading history)
     function addBotMessage(message, scroll = true) {
         const messageDiv = document.createElement('div');
         messageDiv.className = 'bot-message';
-        messageDiv.innerHTML = `<strong>AI:</strong> ${escapeHtml(message)}`;
+        const formattedMessage = formatBotMessage(message);
+        messageDiv.innerHTML = `<strong>AI:</strong> <div class="response-content">${formattedMessage}</div>`;
         chatContainer.appendChild(messageDiv);
         if (scroll) scrollToBottom();
     }
@@ -222,6 +349,7 @@ document.addEventListener('DOMContentLoaded', function () {
         // Get stream reader
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
+        let fullResponse = '';
 
         // Read stream chunks
         while (true) {
@@ -232,15 +360,25 @@ document.addEventListener('DOMContentLoaded', function () {
 
             if (done) break;
 
-            // Decode chunk and add to bot message
+            // Decode chunk and add to response
             const chunk = decoder.decode(value, {
                 stream: true
             });
-            botResponseElement.textContent += chunk;
+            fullResponse += chunk;
+
+            // Show raw text during streaming for real-time feedback
+            botResponseElement.textContent = fullResponse;
 
             // Auto-scroll to bottom
             scrollToBottom();
         }
+
+        // Format the final response with enhanced styling
+        const formattedResponse = formatBotMessage(fullResponse);
+        botResponseElement.innerHTML = formattedResponse;
+
+        // Final scroll
+        scrollToBottom();
     }
 
     // Rename and delete functionality
@@ -266,7 +404,11 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    chatTitle.textContent = data.title;
+                    if (window.updateChatTitles) {
+                        window.updateChatTitles(data.title);
+                    } else {
+                        chatTitle.textContent = data.title;
+                    }
                     loadChatSessions(); // Refresh sidebar
                     bootstrap.Modal.getInstance(document.getElementById('renameModal')).hide();
                 }
@@ -296,6 +438,16 @@ document.addEventListener('DOMContentLoaded', function () {
     // Utility functions
     function scrollToBottom() {
         chatContainer.scrollTop = chatContainer.scrollHeight;
+
+        // Ensure input is visible on mobile after sending message
+        if (window.innerWidth < 768) {
+            setTimeout(() => {
+                document.getElementById('user-input').scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'nearest'
+                });
+            }, 100);
+        }
     }
 
     function escapeHtml(text) {
